@@ -1,0 +1,8 @@
+{
+  "name": "OpsPulse",
+  "description": "Real-time resource usage observation and coordination platform.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

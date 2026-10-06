@@ -1,0 +1,114 @@
+@import "tailwindcss";
+
+@theme {
+    --radius-xl: 0.5rem;
+    --radius-lg: 0.375rem;
+    --radius-md: 0.25rem;
+    --shadow-sm: 0 1px 2px 0 rgb(30 45 59 / 8%), 0 1px 3px 0 rgb(30 45 59 / 4%);
+
+    --color-slate-950: #ffffff;
+    --color-slate-900: #ffffff;
+    --color-slate-800: #f5f5f3;
+    --color-slate-700: #d8d9d7;
+    --color-slate-600: #85837e;
+    --color-slate-500: #706f6b;
+    --color-slate-400: #5c554c;
+    --color-slate-300: #494740;
+    --color-slate-200: #343e48;
+    --color-slate-100: #1e2d3b;
+
+    --color-cyan-950: #eee5d6;
+    --color-cyan-900: #e3d7c4;
+    --color-cyan-800: #cdbda4;
+    --color-cyan-600: #506b7d;
+    --color-cyan-500: #cbd7de;
+    --color-cyan-400: #526e80;
+    --color-cyan-300: #405d70;
+    --color-teal-500: #819b9a;
+    --color-teal-400: #91a9a7;
+
+    --color-blue-950: #e6edf2;
+    --color-blue-800: #c5d3dd;
+    --color-blue-400: #526e83;
+    --color-indigo-950: #e9ebf0;
+    --color-indigo-800: #cdd2dc;
+    --color-indigo-400: #626f86;
+    --color-indigo-300: #56647b;
+
+    --color-emerald-950: #e8efea;
+    --color-emerald-800: #c8d8cd;
+    --color-emerald-400: #5c8068;
+    --color-emerald-300: #4b7258;
+    --color-rose-950: #f3e9e7;
+    --color-rose-900: #ecdedb;
+    --color-rose-800: #dec6c1;
+    --color-rose-500: #a46660;
+    --color-rose-400: #995f5a;
+    --color-rose-300: #89534e;
+    --color-orange-950: #f3ece5;
+    --color-orange-900: #e9d9c9;
+    --color-orange-800: #ddc4ab;
+    --color-orange-500: #a5774e;
+    --color-orange-400: #9b714d;
+    --color-orange-300: #886140;
+    --color-amber-950: #f4f0e2;
+    --color-amber-900: #ede4c8;
+    --color-amber-800: #ddd0a6;
+    --color-amber-500: #9a824b;
+    --color-amber-400: #897440;
+    --color-amber-300: #796638;
+}
+
+.dashboard-shell {
+    min-height: 100vh;
+    background-color: #ffffff;
+    background-image: none;
+    color: #1e2d3b;
+    font-family: "Segoe UI", "Aptos", "Helvetica Neue", sans-serif;
+}
+
+.dashboard-shell header {
+    background-color: #ffffff;
+    background-image: none;
+}
+
+.dashboard-shell .top-nav-tab.bg-cyan-500 {
+    background-color: #d7c9b2;
+    box-shadow: inset 0 0 0 1px #c5b596;
+}
+
+.dashboard-shell .beige-panel {
+    background: linear-gradient(135deg, #f5f0e7 0%, #eee5d8 100%);
+    border-color: #d9cbb7;
+    box-shadow: 0 1px 3px rgb(48 41 30 / 8%);
+}
+
+.dashboard-shell .resource-inventory-header {
+    background: linear-gradient(90deg, #eee5d8 0%, #f5f0e7 100%);
+}
+
+.dashboard-shell .text-white {
+    color: #1e2d3b;
+}
+
+.dashboard-shell .text-slate-950 {
+    color: #1e2d3b;
+}
+
+.brand-name,
+.dashboard-shell h1,
+.dashboard-shell h2,
+.dashboard-shell h3 {
+    font-family: "Palatino Linotype", "Book Antiqua", Georgia, serif;
+    font-weight: 600;
+}
+
+.brand-mark {
+    background: linear-gradient(145deg, #3b5062, #263747);
+    border: 1px solid #657382;
+    box-shadow: 0 2px 5px rgb(30 45 59 / 18%);
+}
+
+.brand-mark svg {
+    color: #f6f2e8;
+}

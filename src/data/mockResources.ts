@@ -1,0 +1,367 @@
+import { ResourceItem, DashboardStats } from '../types/resource.ts';
+import { evaluateResourceThreshold } from '../utils/thresholds.ts';
+
+const RAW_RESOURCES: Omit<ResourceItem, 'status'>[] = [
+  {
+    id: 'res-1',
+    name: 'ICU Ventilators (High-Flow)',
+    category: 'Emergency Equipment',
+    location: 'Metro Central - Ward A',
+    total: 35,
+    used: 22,
+    available: 13,
+    required: 20,
+    unit: 'units',
+    priority: 'high',
+    lastUpdated: '2 mins ago',
+  },
+  {
+    id: 'res-2',
+    name: 'Rapid Response Ambulances',
+    category: 'Mobility & Transport',
+    location: 'Metro South - Ward C',
+    total: 12,
+    used: 11,
+    available: 1,
+    required: 6,
+    unit: 'vehicles',
+    priority: 'urgent',
+    lastUpdated: '1 min ago',
+  },
+  {
+    id: 'res-3',
+    name: 'Rapid Response Ambulances',
+    category: 'Mobility & Transport',
+    location: 'Central Hub - Ward A',
+    total: 18,
+    used: 8,
+    available: 10,
+    required: 6,
+    unit: 'vehicles',
+    priority: 'medium',
+    lastUpdated: '4 mins ago',
+  },
+  {
+    id: 'res-4',
+    name: 'Oxygen Concentrators (10L)',
+    category: 'Emergency Equipment',
+    location: 'North Pavilion - Wing 2',
+    total: 60,
+    used: 54,
+    available: 6,
+    required: 25,
+    unit: 'canisters',
+    priority: 'urgent',
+    lastUpdated: 'Just now',
+  },
+  {
+    id: 'res-5',
+    name: 'O-Negative Blood Reserves',
+    category: 'Consumables & Blood Bank',
+    location: 'Metro Central - Blood Bank',
+    total: 45,
+    used: 36,
+    available: 9,
+    required: 20,
+    unit: 'pints',
+    priority: 'high',
+    lastUpdated: '5 mins ago',
+  },
+  {
+    id: 'res-6',
+    name: 'Mobile Dialysis Units',
+    category: 'Medical & Clinical',
+    location: 'Clinic East - Substation',
+    total: 10,
+    used: 7,
+    available: 3,
+    required: 4,
+    unit: 'units',
+    priority: 'medium',
+    lastUpdated: '7 mins ago',
+  },
+  {
+    id: 'res-7',
+    name: 'Auxiliary Diesel Generators',
+    category: 'Energy & Utilities',
+    location: 'Metro South - Substation',
+    total: 8,
+    used: 5,
+    available: 3,
+    required: 3,
+    unit: 'generators',
+    priority: 'low',
+    lastUpdated: '12 mins ago',
+  },
+  {
+    id: 'res-8',
+    name: 'Trauma & Surgical Field Kits',
+    category: 'Medical & Clinical',
+    location: 'Metro Central - ER Dep',
+    total: 80,
+    used: 68,
+    available: 12,
+    required: 30,
+    unit: 'kits',
+    priority: 'high',
+    lastUpdated: '3 mins ago',
+  },
+  {
+    id: 'res-9',
+    name: 'Oxygen Concentrators (10L)',
+    category: 'Emergency Equipment',
+    location: 'Central Logistics Depot',
+    total: 80,
+    used: 25,
+    available: 55,
+    required: 20,
+    unit: 'canisters',
+    priority: 'medium',
+    lastUpdated: '10 mins ago',
+  },
+  {
+    id: 'res-10',
+    name: 'O-Negative Blood Reserves',
+    category: 'Consumables & Blood Bank',
+    location: 'Regional Blood Bank Hub',
+    total: 60,
+    used: 20,
+    available: 40,
+    required: 15,
+    unit: 'pints',
+    priority: 'medium',
+    lastUpdated: '8 mins ago',
+  },
+  {
+    id: 'res-11',
+    name: 'ICU Ventilators (High-Flow)',
+    category: 'Emergency Equipment',
+    location: 'North Pavilion - Reserve',
+    total: 40,
+    used: 15,
+    available: 25,
+    required: 15,
+    unit: 'units',
+    priority: 'low',
+    lastUpdated: '15 mins ago',
+  },
+  {
+    id: 'res-12',
+    name: 'Trauma & Surgical Field Kits',
+    category: 'Medical & Clinical',
+    location: 'East Logistics Depot',
+    total: 90,
+    used: 30,
+    available: 60,
+    required: 25,
+    unit: 'kits',
+    priority: 'low',
+    lastUpdated: '6 mins ago',
+  },
+];
+
+// Dynamically and deterministically evaluate status using threshold rules
+export const INITIAL_RESOURCES: ResourceItem[] = RAW_RESOURCES.map((item) => {
+  const { status } = evaluateResourceThreshold(item.available, item.required, item.total, item.used);
+  return {
+    ...item,
+    status,
+  };
+});
+
+// Scenario 2: Severe Power Grid & Fuel Emergency
+const GRID_OUTAGE_RAW: Omit<ResourceItem, 'status'>[] = [
+  {
+    id: 'sc2-1',
+    name: 'Auxiliary Diesel Generators',
+    category: 'Energy & Utilities',
+    location: 'Metro South - Substation',
+    total: 8,
+    used: 7,
+    available: 1,
+    required: 5,
+    unit: 'generators',
+    priority: 'urgent',
+    lastUpdated: '1 min ago',
+  },
+  {
+    id: 'sc2-2',
+    name: 'Auxiliary Diesel Generators',
+    category: 'Energy & Utilities',
+    location: 'Central Logistics Depot',
+    total: 15,
+    used: 4,
+    available: 11,
+    required: 4,
+    unit: 'generators',
+    priority: 'medium',
+    lastUpdated: 'Just now',
+  },
+  {
+    id: 'sc2-3',
+    name: 'Mobile Dialysis Units',
+    category: 'Medical & Clinical',
+    location: 'Clinic East - Substation',
+    total: 10,
+    used: 9,
+    available: 1,
+    required: 5,
+    unit: 'units',
+    priority: 'urgent',
+    lastUpdated: '2 mins ago',
+  },
+  {
+    id: 'sc2-4',
+    name: 'Mobile Dialysis Units',
+    category: 'Medical & Clinical',
+    location: 'Metro Central - Specialized Care',
+    total: 14,
+    used: 5,
+    available: 9,
+    required: 4,
+    unit: 'units',
+    priority: 'low',
+    lastUpdated: '5 mins ago',
+  },
+  {
+    id: 'sc2-5',
+    name: 'ICU Ventilators (High-Flow)',
+    category: 'Emergency Equipment',
+    location: 'Metro Central - Ward A',
+    total: 35,
+    used: 20,
+    available: 15,
+    required: 15,
+    unit: 'units',
+    priority: 'normal' as any,
+    lastUpdated: '8 mins ago',
+  },
+];
+
+// Scenario 3: Balanced Operations (Post-Coordination Benchmark)
+const BALANCED_RAW: Omit<ResourceItem, 'status'>[] = [
+  {
+    id: 'sc3-1',
+    name: 'Rapid Response Ambulances',
+    category: 'Mobility & Transport',
+    location: 'Metro South - Ward C',
+    total: 12,
+    used: 6,
+    available: 6,
+    required: 5,
+    unit: 'vehicles',
+    priority: 'low',
+    lastUpdated: 'Just now',
+  },
+  {
+    id: 'sc3-2',
+    name: 'Rapid Response Ambulances',
+    category: 'Mobility & Transport',
+    location: 'Central Hub - Ward A',
+    total: 18,
+    used: 10,
+    available: 8,
+    required: 6,
+    unit: 'vehicles',
+    priority: 'low',
+    lastUpdated: 'Just now',
+  },
+  {
+    id: 'sc3-3',
+    name: 'Oxygen Concentrators (10L)',
+    category: 'Emergency Equipment',
+    location: 'North Pavilion - Wing 2',
+    total: 60,
+    used: 35,
+    available: 25,
+    required: 20,
+    unit: 'canisters',
+    priority: 'low',
+    lastUpdated: 'Just now',
+  },
+  {
+    id: 'sc3-4',
+    name: 'O-Negative Blood Reserves',
+    category: 'Consumables & Blood Bank',
+    location: 'Metro Central - Blood Bank',
+    total: 45,
+    used: 22,
+    available: 23,
+    required: 20,
+    unit: 'pints',
+    priority: 'low',
+    lastUpdated: 'Just now',
+  },
+  {
+    id: 'sc3-5',
+    name: 'Auxiliary Diesel Generators',
+    category: 'Energy & Utilities',
+    location: 'Metro South - Substation',
+    total: 8,
+    used: 4,
+    available: 4,
+    required: 3,
+    unit: 'generators',
+    priority: 'low',
+    lastUpdated: 'Just now',
+  },
+];
+
+export interface DemoScenario {
+  id: string;
+  name: string;
+  badge: string;
+  description: string;
+  resources: ResourceItem[];
+}
+
+export const DEMO_SCENARIOS: DemoScenario[] = [
+  {
+    id: 'mass-casualty',
+    name: 'Metro Emergency Surge',
+    badge: 'Shortage Detected (Default)',
+    description: 'High-volume casualty surge with severe ambulance and oxygen deficits at Ward C & North Pavilion.',
+    resources: INITIAL_RESOURCES,
+  },
+  {
+    id: 'grid-outage',
+    name: 'Power Grid Substation Failure',
+    badge: 'Critical Utilities Alert',
+    description: 'Power grid blackout causing emergency generator deficits at South Substation and Clinic East.',
+    resources: GRID_OUTAGE_RAW.map((item) => ({
+      ...item,
+      status: evaluateResourceThreshold(item.available, item.required, item.total, item.used).status,
+    })),
+  },
+  {
+    id: 'balanced',
+    name: 'Post-Coordination Balanced State',
+    badge: 'All Units Optimal',
+    description: 'Demonstrates system health when all recommended transfers have been executed and stabilized.',
+    resources: BALANCED_RAW.map((item) => ({
+      ...item,
+      status: evaluateResourceThreshold(item.available, item.required, item.total, item.used).status,
+    })),
+  },
+];
+
+export function computeDashboardStats(resources: ResourceItem[]): DashboardStats {
+  const total = resources.reduce((acc, item) => acc + item.total, 0);
+  const used = resources.reduce((acc, item) => acc + item.used, 0);
+  const available = resources.reduce((acc, item) => acc + item.available, 0);
+  const utilization = total > 0 ? Math.round((used / total) * 100) : 0;
+
+  const criticalCount = resources.filter((item) => item.status === 'critical').length;
+  const lowCount = resources.filter((item) => item.status === 'low').length;
+  const normalCount = resources.filter((item) => item.status === 'normal').length;
+
+  return {
+    totalResources: total,
+    usedResources: used,
+    availableResources: available,
+    utilizationPercentage: utilization,
+    criticalCount,
+    lowCount,
+    normalCount,
+  };
+}
