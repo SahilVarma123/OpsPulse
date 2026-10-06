@@ -1,18 +1,35 @@
 import { GoogleGenAI, Type } from '@google/genai';
 
 export default async function handler(req, res) {
+    console.info('[recommendation] Request received', { method: req.method });
+
     if (req.method !== 'POST') {
         res.setHeader('Allow', 'POST');
         return res.status(405).json({ error: 'Method not allowed.' });
     }
 
-    const { shortages, surpluses = [] } = req.body || {};
+    let body = req.body;
+    if (typeof body === 'string') {
+        try {
+            body = JSON.parse(body);
+        } catch {
+            return res.status(400).json({ error: 'Invalid JSON request body.' });
+        }
+    }
+
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+        return res.status(400).json({ error: 'Invalid recommendation request.' });
+    }
+
+    const { shortages, surpluses = [] } = body;
     if (!Array.isArray(shortages) || !Array.isArray(surpluses)) {
         return res.status(400).json({ error: 'Invalid recommendation request.' });
     }
 
     const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey || apiKey === 'MY_GEMINI_API_KEY') {
+    const hasApiKey = Boolean(apiKey && apiKey !== 'MY_GEMINI_API_KEY');
+    console.info('[recommendation] GEMINI_API_KEY configured:', hasApiKey);
+    if (!hasApiKey) {
         return res.status(500).json({ error: 'Recommendation service is not configured.' });
     }
 
@@ -27,6 +44,7 @@ export default async function handler(req, res) {
             .map((item) => `- ${item.name} at ${item.location}: +${item.surplus} ${item.unit} available`)
             .join('\n');
 
+        console.info('[recommendation] Gemini request started', { model: 'gemini-3.8-flash' });
         const response = await ai.models.generateContent({
             model: 'gemini-3.8-flash',
             contents: `Current Facility Resource State:\nDeficits:\n${shortageSummary || 'None'}\n\nAvailable Surpluses:\n${surplusSummary || 'None'}\n\nState exactly one immediate coordination action with factual justification.`,
@@ -48,6 +66,7 @@ export default async function handler(req, res) {
                 },
             },
         });
+        console.info('[recommendation] Gemini response received');
 
         const rawRecommendation = response.text?.trim();
         if (!rawRecommendation) {
@@ -58,8 +77,10 @@ export default async function handler(req, res) {
             recommendation: JSON.parse(rawRecommendation),
             isFallback: false,
         });
-    } catch {
-        console.error('Gemini recommendation request failed.');
+    } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        const safeErrorMessage = apiKey ? errorMessage.replaceAll(apiKey, '[REDACTED]') : errorMessage;
+        console.error('[recommendation] Gemini request failed:', safeErrorMessage);
         return res.status(502).json({ error: 'Recommendation service is temporarily unavailable.' });
     }
 }
