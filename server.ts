@@ -81,7 +81,10 @@ function generateLocalFallback(shortages: CompactShortage[], surpluses: CompactS
 // Server-side API endpoint for Gemini structured coordination recommendation
 app.post('/api/recommendation', async (req: Request, res: Response) => {
   const { shortages = [], surpluses = [] } = (req.body || {}) as RecommendationRequest;
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey =
+    process.env.GEMINI_API_KEY ||
+    process.env.GOOGLE_API_KEY ||
+    process.env.VITE_GEMINI_API_KEY;
 
   // Fallback if no API key is configured
   if (!apiKey || apiKey === 'MY_GEMINI_API_KEY') {

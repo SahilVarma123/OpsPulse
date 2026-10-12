@@ -161,7 +161,8 @@ export default function App() {
       });
 
       if (!res.ok) {
-        throw new Error(`Service returned HTTP ${res.status}`);
+        const errorData = await res.json().catch(() => null);
+        throw new Error(errorData?.error || `Service returned HTTP ${res.status}`);
       }
 
       const data = await res.json();
