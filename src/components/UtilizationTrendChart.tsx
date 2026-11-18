@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { TrendingUp, AlertCircle, Clock } from 'lucide-react';
+import { TrendingUp, AlertCircle, Clock, Activity, Zap } from 'lucide-react';
 import { TimeRange } from '../utils/timeRange.ts';
 
 export interface TrendDataPoint {
@@ -17,7 +17,6 @@ interface UtilizationTrendChartProps {
 }
 
 export function getTrendPoints(timeRange: TimeRange, currentUtilization: number, total: number): TrendDataPoint[] {
-  // Deterministic trend history tailored to selected timeRange
   switch (timeRange) {
     case '7d':
       return [
@@ -55,7 +54,7 @@ export function getTrendPoints(timeRange: TimeRange, currentUtilization: number,
         { time: '14:00', utilization: 74, used: Math.round(total * 0.74) },
         { time: '16:00', utilization: 77, used: Math.round(total * 0.77), annotation: 'Surge Incident' },
         { time: '18:00', utilization: 75, used: Math.round(total * 0.75) },
-        { time: 'Now', utilization: currentUtilization, used: Math.round(total * (currentUtilization / 100)), annotation: 'Live' },
+        { time: 'Now', utilization: currentUtilization, used: Math.round(total * (currentUtilization / 100)), annotation: 'Live Stream' },
       ];
   }
 }
@@ -110,15 +109,19 @@ export default function UtilizationTrendChart({
   const activeCoord = hoveredIdx !== null ? coordinates[hoveredIdx] : coordinates[coordinates.length - 1];
 
   return (
-    <div className="beige-panel rounded-xl border p-5 space-y-4">
+    <div className="cockpit-panel p-5 space-y-4">
       {/* Chart Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
         <div>
           <div className="flex items-center gap-2">
-            <TrendingUp className="w-4 h-4 text-cyan-400" />
-            <h3 className="font-semibold text-white text-sm sm:text-base">Resource Utilization Trend</h3>
-            <span className="px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-cyan-950 text-cyan-300 border border-cyan-800">
-              {timeRange === 'today' ? 'Hourly (12H)' : timeRange === '7d' ? 'Daily (7D)' : timeRange === '30d' ? 'Weekly (30D)' : '14-Day'}
+            <div className="p-1.5 rounded-lg bg-teal-950/80 border border-teal-800/60 text-teal-400">
+              <Activity className="w-4 h-4" />
+            </div>
+            <h3 className="font-semibold text-white text-sm sm:text-base tracking-tight">
+              Operational Telemetry Trend
+            </h3>
+            <span className="px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-teal-950/80 text-teal-300 border border-teal-800/80 shadow-sm">
+              {timeRange === 'today' ? 'Live Telemetry (12H)' : timeRange === '7d' ? 'Daily Rolling (7D)' : timeRange === '30d' ? 'Weekly Rolling (30D)' : '14-Day Cycle'}
             </span>
           </div>
           <p className="text-xs text-slate-400 mt-1">
@@ -128,17 +131,18 @@ export default function UtilizationTrendChart({
 
         {/* Highlight Stats */}
         <div className="flex items-center gap-3 text-xs self-start sm:self-auto">
-          <div className="px-3 py-1.5 rounded-lg bg-slate-800/80 border border-slate-700/60">
-            <span className="text-slate-400 text-[11px]">Selected: </span>
-            <span className="font-mono font-bold text-white ml-1">{activePoint.time}</span>
-            <span className="font-mono font-extrabold text-cyan-400 ml-1.5">{activePoint.utilization}%</span>
-            <span className="text-slate-500 text-[11px] ml-1">({activePoint.used}u)</span>
+          <div className="px-3.5 py-1.5 rounded-xl bg-slate-900/90 border border-slate-700/80 shadow-inner flex items-center gap-2">
+            <span className="text-slate-400 text-[11px]">Active Window:</span>
+            <span className="font-mono font-bold text-white">{activePoint.time}</span>
+            <span className="text-slate-600">•</span>
+            <span className="font-mono font-extrabold text-teal-400">{activePoint.utilization}%</span>
+            <span className="text-slate-500 text-[11px]">({activePoint.used} units)</span>
           </div>
         </div>
       </div>
 
       {/* SVG Chart Canvas */}
-      <div className="relative w-full overflow-hidden">
+      <div className="relative w-full overflow-hidden rounded-lg bg-slate-950/50 p-2 border border-slate-800/50">
         <svg
           viewBox={`0 0 ${svgWidth} ${svgHeight}`}
           className="w-full h-44 sm:h-52 select-none"
@@ -148,14 +152,19 @@ export default function UtilizationTrendChart({
           <defs>
             {/* Linear Gradient for area fill */}
             <linearGradient id="utilizationGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#526e80" stopOpacity="0.24" />
-              <stop offset="60%" stopColor="#526e80" stopOpacity="0.08" />
-              <stop offset="100%" stopColor="#526e80" stopOpacity="0" />
+              <stop offset="0%" stopColor="#14B8A6" stopOpacity="0.35" />
+              <stop offset="50%" stopColor="#14B8A6" stopOpacity="0.12" />
+              <stop offset="100%" stopColor="#14B8A6" stopOpacity="0.0" />
             </linearGradient>
 
             {/* Glowing filter for main stroke */}
-            <filter id="cyanGlow" x="-20%" y="-20%" width="140%" height="140%">
-              <feDropShadow dx="0" dy="0" stdDeviation="2" floodColor="#526e80" floodOpacity="0.18" />
+            <filter id="tealGlow" x="-20%" y="-20%" width="140%" height="140%">
+              <feDropShadow dx="0" dy="0" stdDeviation="3" floodColor="#14B8A6" floodOpacity="0.5" />
+            </filter>
+
+            {/* Glowing filter for critical warning threshold */}
+            <filter id="amberGlow" x="-20%" y="-20%" width="140%" height="140%">
+              <feDropShadow dx="0" dy="0" stdDeviation="2" floodColor="#F59E0B" floodOpacity="0.4" />
             </filter>
           </defs>
 
@@ -169,16 +178,17 @@ export default function UtilizationTrendChart({
                   y1={y}
                   x2={svgWidth - paddingRight}
                   y2={y}
-                  stroke="#cbd0d2"
+                  stroke={tick === 75 ? '#F59E0B' : '#1E293B'}
                   strokeWidth="1"
-                  strokeDasharray={tick === 75 ? '4 4' : '2 4'}
-                  strokeOpacity={tick === 75 ? '0.7' : '0.4'}
+                  strokeDasharray={tick === 75 ? '5 5' : '2 4'}
+                  strokeOpacity={tick === 75 ? '0.75' : '0.6'}
+                  filter={tick === 75 ? 'url(#amberGlow)' : undefined}
                 />
                 <text
                   x={paddingLeft - 8}
                   y={y + 3.5}
                   textAnchor="end"
-                  className="text-[10px] fill-slate-500 font-mono"
+                  className={`text-[10px] font-mono ${tick === 75 ? 'fill-amber-400 font-bold' : 'fill-slate-500'}`}
                 >
                   {tick}%
                 </text>
@@ -191,7 +201,7 @@ export default function UtilizationTrendChart({
             x={svgWidth - paddingRight}
             y={warningThresholdY - 6}
             textAnchor="end"
-            className="text-[9px] fill-amber-400/80 font-mono font-medium"
+            className="text-[10px] fill-amber-400 font-mono font-semibold"
           >
             Warning Threshold (75%)
           </text>
@@ -199,15 +209,15 @@ export default function UtilizationTrendChart({
           {/* Area Fill */}
           <path d={areaPath} fill="url(#utilizationGradient)" />
 
-          {/* Line Stroke */}
+          {/* Line Stroke with smooth wave glow */}
           <path
             d={linePath}
             fill="none"
-            stroke="#526e80"
-            strokeWidth="2.5"
+            stroke="#14B8A6"
+            strokeWidth="3"
             strokeLinecap="round"
             strokeLinejoin="round"
-            filter="url(#cyanGlow)"
+            filter="url(#tealGlow)"
           />
 
           {/* Vertical guideline for active/hovered point */}
@@ -216,59 +226,86 @@ export default function UtilizationTrendChart({
             y1={paddingTop}
             x2={activeCoord.x}
             y2={zeroY}
-            stroke="#718697"
+            stroke="#2DD4BF"
             strokeWidth="1.5"
             strokeDasharray="3 3"
-            strokeOpacity="0.8"
+            strokeOpacity="0.7"
           />
 
-          {/* Data points & hit areas */}
-          {points.map((p, idx) => {
-            const cx = coordinates[idx].x;
-            const cy = coordinates[idx].y;
-            const isHovered = hoveredIdx === idx || (hoveredIdx === null && idx === points.length - 1);
+          {/* Points & Annotations */}
+          {coordinates.map((coord, i) => {
+            const p = points[i];
+            const isHovered = hoveredIdx === i;
+            const isLast = i === points.length - 1;
+            const isCritical = p.utilization >= 75;
 
             return (
-              <g key={idx} className="cursor-pointer">
-                {/* Invisible large hit area */}
-                <circle
-                  cx={cx}
-                  cy={cy}
-                  r="22"
-                  fill="transparent"
-                  onMouseEnter={() => setHoveredIdx(idx)}
-                />
+              <g
+                key={i}
+                className="cursor-pointer transition-transform"
+                onMouseEnter={() => setHoveredIdx(i)}
+              >
+                {/* Invisible hover hitbox */}
+                <circle cx={coord.x} cy={coord.y} r="18" fill="transparent" />
 
-                {/* Point circle */}
-                <circle
-                  cx={cx}
-                  cy={cy}
-                  r={isHovered ? '5' : '3.5'}
-                  fill={isHovered ? '#526e80' : '#718697'}
-                  stroke="#fffefa"
-                  strokeWidth="2"
-                  className="transition-all duration-150"
-                />
-
-                {/* Annotation pill if point has special label */}
-                {p.annotation && (
-                  <text
-                    x={cx}
-                    y={cy - 10}
-                    textAnchor="middle"
-                    className="text-[9px] fill-cyan-300 font-bold font-mono"
-                  >
-                    {p.annotation}
-                  </text>
+                {/* Radar pulse ring for live or surge point */}
+                {(isLast || isHovered || p.annotation) && (
+                  <circle
+                    cx={coord.x}
+                    cy={coord.y}
+                    r={isHovered ? '9' : '7'}
+                    fill="none"
+                    stroke={isCritical ? '#F43F5E' : '#14B8A6'}
+                    strokeWidth="1.5"
+                    strokeOpacity="0.6"
+                    className="animate-ping"
+                  />
                 )}
 
-                {/* X-axis tick label */}
+                {/* Outer point circle */}
+                <circle
+                  cx={coord.x}
+                  cy={coord.y}
+                  r={isHovered ? '6' : isLast ? '5' : '4'}
+                  fill={isCritical ? '#F43F5E' : '#14B8A6'}
+                  stroke="#071514"
+                  strokeWidth="2"
+                  filter="url(#tealGlow)"
+                />
+
+                {/* Milestone annotation badge */}
+                {p.annotation && (
+                  <g transform={`translate(${coord.x}, ${Math.max(coord.y - 18, paddingTop)})`}>
+                    <rect
+                      x="-40"
+                      y="-14"
+                      width="80"
+                      height="16"
+                      rx="4"
+                      fill="#0F172A"
+                      stroke={isCritical ? '#F43F5E' : '#06B6D4'}
+                      strokeWidth="1"
+                      fillOpacity="0.95"
+                    />
+                    <text
+                      x="0"
+                      y="-3"
+                      textAnchor="middle"
+                      className="text-[9px] fill-slate-200 font-mono font-bold"
+                    >
+                      {p.annotation}
+                    </text>
+                  </g>
+                )}
+
+                {/* X-Axis time labels */}
                 <text
-                  x={cx}
+                  x={coord.x}
                   y={svgHeight - 12}
                   textAnchor="middle"
-                  className={`text-[10px] font-mono transition-colors ${isHovered ? 'fill-cyan-300 font-bold' : 'fill-slate-400'
-                    }`}
+                  className={`text-[10px] font-mono transition-colors ${
+                    isHovered || isLast ? 'fill-teal-300 font-bold' : 'fill-slate-500'
+                  }`}
                 >
                   {p.time}
                 </text>
@@ -276,24 +313,48 @@ export default function UtilizationTrendChart({
             );
           })}
         </svg>
+
+        {/* Floating Tooltip */}
+        {hoveredIdx !== null && (
+          <div
+            className="absolute pointer-events-none z-10 px-3 py-2 rounded-lg bg-slate-900/95 border border-teal-500/50 shadow-xl shadow-teal-950/50 backdrop-blur-md text-xs -translate-x-1/2 -translate-y-full transition-all"
+            style={{
+              left: `${(activeCoord.x / svgWidth) * 100}%`,
+              top: `${Math.max((activeCoord.y / svgHeight) * 100 - 8, 12)}%`,
+            }}
+          >
+            <div className="flex items-center gap-1.5 font-bold text-white">
+              <span className={`w-2 h-2 rounded-full ${activePoint.utilization >= 75 ? 'bg-amber-400' : 'bg-teal-400'}`} />
+              <span>{activePoint.time}</span>
+            </div>
+            <div className="mt-1 flex items-baseline gap-2 font-mono">
+              <span className="text-teal-400 font-extrabold text-sm">{activePoint.utilization}%</span>
+              <span className="text-slate-400 text-[11px]">{activePoint.used} units deployed</span>
+            </div>
+            {activePoint.annotation && (
+              <div className="mt-1 text-[10px] text-amber-300 font-medium">
+                ⚡ {activePoint.annotation}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Footer Legend */}
-      <div className="flex flex-wrap items-center justify-between gap-2 pt-2 text-[11px] text-slate-400">
+      {/* Legend & Telemetry Indicators */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pt-2 text-xs text-slate-400 border-t border-slate-800/60">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-0.5 bg-cyan-400 rounded-full inline-block"></span>
-            <span>Capacity Utilization</span>
+            <span className="w-3 h-0.5 bg-teal-400 rounded-full" />
+            <span>Telemetry Curve</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-0.5 border-t border-dashed border-amber-400 inline-block"></span>
-            <span>75% High-Demand Limit</span>
+            <span className="w-3 h-0.5 border-t border-dashed border-amber-400" />
+            <span className="text-amber-400/90 font-medium">75% Surge Baseline</span>
           </div>
         </div>
-
-        <div className="flex items-center gap-1 text-slate-500 font-mono text-[10px]">
-          <Clock className="w-3 h-3 text-slate-500" />
-          <span>Interactive hover: Hover points to inspect timestamp breakdown</span>
+        <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-mono">
+          <Clock className="w-3 h-3 text-slate-400" />
+          <span>Real-time rolling observation cadence</span>
         </div>
       </div>
     </div>
