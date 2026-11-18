@@ -126,3 +126,13 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #14B8A6;
 }
+
+/* Real-Time GIS Clinical Dark Basemap (100% Free - Zero API Key Required) */
+.iccc-dark-tiles .leaflet-tile {
+  filter: brightness(0.65) invert(1) contrast(2.2) hue-rotate(180deg) saturate(0.35);
+}
+
+.iccc-esri-tiles .leaflet-tile {
+  filter: brightness(0.95) contrast(1.1);
+}
+

@@ -1,20 +1,23 @@
 import React, { useRef, useEffect, useState, useMemo } from 'react';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+import mapboxgl from 'mapbox-gl';
+import 'mapbox-gl/dist/mapbox-gl.css';
 import {
-  Navigation,
   Compass,
-  Layers,
   MapPin,
   ArrowRight,
-  Crosshair,
   Maximize2,
   Minimize2,
-  RefreshCw,
   Locate,
-  Radio,
+  Layers,
+  RotateCw,
+  RefreshCw,
+  AlertTriangle,
 } from 'lucide-react';
 import { ResourceItem } from '../types/resource.ts';
+
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || '';
+
+mapboxgl.accessToken = MAPBOX_TOKEN;
 
 export interface RealFacilityNode {
   id: string;
@@ -24,7 +27,7 @@ export interface RealFacilityNode {
   lat: number;
   lng: number;
   locationMatch: string;
-  cluster: 'delhi' | 'bengaluru' | 'mumbai' | 'user';
+  cluster: 'delhi' | 'bengaluru' | 'mumbai';
 }
 
 const PRESET_FACILITIES: RealFacilityNode[] = [
@@ -155,9 +158,8 @@ const PRESET_FACILITIES: RealFacilityNode[] = [
   },
 ];
 
-// Calculate Haversine distance in kilometers
 function calculateHaversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371; // Earth's radius in km
+  const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
   const a =
@@ -175,19 +177,73 @@ interface Real3DEventMapProps {
   onNavigateToCoordination?: () => void;
 }
 
-export default function Real3DEventMap({
+class MapErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error: string }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: '' };
+  }
+
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true, error: error?.message || 'Error displaying 3D map' };
+  }
+
+  componentDidCatch(error: any, info: any) {
+    console.error('3D Map Error Boundary caught error:', error, info);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="rounded-2xl border border-teal-900/60 bg-gradient-to-b from-[#09221F] via-[#0B201D] to-[#071615] p-8 text-center space-y-4 shadow-2xl">
+          <div className="w-12 h-12 rounded-2xl bg-teal-950 border border-teal-700 text-teal-400 flex items-center justify-center mx-auto shadow-lg">
+            <AlertTriangle className="w-6 h-6 text-amber-400" />
+          </div>
+          <h3 className="text-lg font-bold text-white font-heading">Geospatial 3D Map Display</h3>
+          <p className="text-xs text-slate-300 max-w-md mx-auto leading-relaxed">
+            {this.state.error}. Click below to reload the 3D map view.
+          </p>
+          <button
+            onClick={() => this.setState({ hasError: false, error: '' })}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs shadow-lg cursor-pointer"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>Reload 3D Map</span>
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+export default function Real3DEventMapWrapper(props: Real3DEventMapProps) {
+  return (
+    <MapErrorBoundary>
+      <Real3DEventMapContent {...props} />
+    </MapErrorBoundary>
+  );
+}
+
+function Real3DEventMapContent({
   resources,
   onNavigateToCoordination,
 }: Real3DEventMapProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<L.Map | null>(null);
-  const markersLayerRef = useRef<L.LayerGroup | null>(null);
-  const routesLayerRef = useRef<L.LayerGroup | null>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const markersRef = useRef<mapboxgl.Marker[]>([]);
+  const currentStyleRef = useRef<string>('mapbox://styles/mapbox/dark-v11');
 
-  // Active Cluster & Map Config
+  // Map state
+  const [isMapReady, setIsMapReady] = useState(false);
+  const [mapInitError, setMapInitError] = useState<string | null>(null);
+
+  // Cluster & Styles
   const [selectedCluster, setSelectedCluster] = useState<'delhi' | 'bengaluru' | 'mumbai'>('delhi');
-  const [tileLayerType, setTileLayerType] = useState<'carto-dark' | 'esri-satellite' | 'osm'>('carto-dark');
-  const [is3DMode, setIs3DMode] = useState(true);
+  const [mapStyle, setMapStyle] = useState<'dark' | 'satellite' | 'streets'>('dark');
+  const [isAutoOrbit, setIsAutoOrbit] = useState(false);
   const [isFullScreen, setIsFullScreen] = useState(false);
 
   // User Real GPS Location
@@ -200,7 +256,7 @@ export default function Real3DEventMap({
   const [isLocating, setIsLocating] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
 
-  // Node Selection & Transit Calculator
+  // Selection & Filters
   const [selectedNode, setSelectedNode] = useState<RealFacilityNode | null>(PRESET_FACILITIES[0]);
   const [measureFromNode, setMeasureFromNode] = useState<RealFacilityNode | null>(PRESET_FACILITIES[4]);
   const [measureToNode, setMeasureToNode] = useState<RealFacilityNode | null>(PRESET_FACILITIES[1]);
@@ -240,7 +296,7 @@ export default function Real3DEventMap({
     return list;
   }, [selectedCluster, userLocation]);
 
-  // Request browser GPS real location
+  // Request browser GPS real location and fly with 3D tilt
   const handleDetectLocation = () => {
     setIsLocating(true);
     setLocationError(null);
@@ -264,105 +320,215 @@ export default function Real3DEventMap({
         setUserLocation(detected);
         setIsLocating(false);
 
-        // Fly camera to user's real location
-        if (mapInstanceRef.current) {
-          mapInstanceRef.current.flyTo([latitude, longitude], 14, {
-            duration: 1.5,
+        if (mapRef.current && isMapReady) {
+          mapRef.current.flyTo({
+            center: [longitude, latitude],
+            zoom: 15.8,
+            pitch: 65,
+            bearing: 25,
+            duration: 2500,
+            essential: true,
           });
         }
       },
       (err) => {
         console.warn('Geolocation error:', err.message);
-        setLocationError(`Location detection: ${err.message}. Using default corridor.`);
+        setLocationError(`Location detection: ${err.message}. Showing regional network.`);
         setIsLocating(false);
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
     );
   };
 
-  // Initialize Leaflet Map
+  // Helper to add 3D extruded buildings layer safely
+  const add3DBuildingsLayer = (map: mapboxgl.Map) => {
+    try {
+      if (!map || !map.isStyleLoaded()) return;
+      if (map.getLayer('add-3d-buildings')) return;
+
+      const style = map.getStyle();
+      if (!style || !style.layers) return;
+
+      let labelLayerId: string | undefined;
+      for (const layer of style.layers) {
+        if (layer.type === 'symbol' && layer.layout && layer.layout['text-field']) {
+          labelLayerId = layer.id;
+          break;
+        }
+      }
+
+      map.addLayer(
+        {
+          id: 'add-3d-buildings',
+          source: 'composite',
+          'source-layer': 'building',
+          filter: ['==', 'extrude', 'true'],
+          type: 'fill-extrusion',
+          minzoom: 14,
+          paint: {
+            'fill-extrusion-color': [
+              'interpolate',
+              ['linear'],
+              ['get', 'height'],
+              0,
+              '#0A2420',
+              30,
+              '#0E332D',
+              70,
+              '#13453D',
+              150,
+              '#195C51',
+              300,
+              '#217A6C',
+            ],
+            'fill-extrusion-height': [
+              'interpolate',
+              ['linear'],
+              ['zoom'],
+              14,
+              0,
+              14.05,
+              ['get', 'height'],
+            ],
+            'fill-extrusion-base': [
+              'interpolate',
+              ['linear'],
+              ['zoom'],
+              14,
+              0,
+              14.05,
+              ['get', 'min_height'],
+            ],
+            'fill-extrusion-opacity': 0.9,
+          },
+        },
+        labelLayerId
+      );
+    } catch (err) {
+      console.warn('3D buildings addition error:', err);
+    }
+  };
+
+  // Safe Map Initialization
   useEffect(() => {
     if (!mapContainerRef.current) return;
 
-    if (!mapInstanceRef.current) {
-      // Default to Delhi center
-      const map = L.map(mapContainerRef.current, {
-        center: [28.5672, 77.2100],
-        zoom: 12,
-        zoomControl: false,
+    try {
+      mapboxgl.accessToken = MAPBOX_TOKEN;
+
+      const initialCenter: [number, number] = [77.2100, 28.5672]; // Delhi AIIMS
+
+      const map = new mapboxgl.Map({
+        container: mapContainerRef.current,
+        style: 'mapbox://styles/mapbox/dark-v11',
+        center: initialCenter,
+        zoom: 14.2,
+        pitch: 60,
+        bearing: -18,
+        antialias: true,
         attributionControl: false,
       });
 
-      L.control.zoom({ position: 'topright' }).addTo(map);
+      map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), 'top-right');
 
-      markersLayerRef.current = L.layerGroup().addTo(map);
-      routesLayerRef.current = L.layerGroup().addTo(map);
-      mapInstanceRef.current = map;
+      map.on('load', () => {
+        setIsMapReady(true);
+        try {
+          map.setFog({
+            color: 'rgb(7, 21, 20)',
+            'high-color': 'rgb(11, 32, 29)',
+            'horizon-blend': 0.12,
+            'space-color': 'rgb(4, 12, 11)',
+            'star-intensity': 0.4,
+          });
+          add3DBuildingsLayer(map);
+        } catch (e) {
+          console.warn('Fog / 3D setup note:', e);
+        }
+      });
+
+      map.on('error', (e) => {
+        console.warn('Mapbox internal event:', e);
+      });
+
+      mapRef.current = map;
+
+      return () => {
+        setIsMapReady(false);
+        map.remove();
+        mapRef.current = null;
+      };
+    } catch (err: any) {
+      console.error('Failed to initialize Mapbox GL:', err);
+      setMapInitError(err?.message || 'Failed to initialize WebGL 3D Map');
     }
-
-    return () => {
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.remove();
-        mapInstanceRef.current = null;
-      }
-    };
   }, []);
 
-  // Update Base Tile Layer
+  // Safe Style Change (Dark / Satellite / Streets)
   useEffect(() => {
-    const map = mapInstanceRef.current;
-    if (!map) return;
+    const map = mapRef.current;
+    if (!map || !isMapReady) return;
 
-    // Remove existing tile layer
-    map.eachLayer((layer) => {
-      if (layer instanceof L.TileLayer) {
-        map.removeLayer(layer);
-      }
-    });
-
-    let tileUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
-    let subdomains = 'abcd';
-
-    if (tileLayerType === 'esri-satellite') {
-      tileUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
-      subdomains = 'abc';
-    } else if (tileLayerType === 'osm') {
-      tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-      subdomains = 'abc';
+    let targetStyle = 'mapbox://styles/mapbox/dark-v11';
+    if (mapStyle === 'satellite') {
+      targetStyle = 'mapbox://styles/mapbox/satellite-streets-v12';
+    } else if (mapStyle === 'streets') {
+      targetStyle = 'mapbox://styles/mapbox/streets-v12';
     }
 
-    const tileLayer = L.tileLayer(tileUrl, {
-      maxZoom: 19,
-      subdomains,
-    });
-    tileLayer.addTo(map);
-  }, [tileLayerType]);
+    if (currentStyleRef.current === targetStyle) return;
+    currentStyleRef.current = targetStyle;
 
-  // Center map when cluster changes
+    try {
+      map.setStyle(targetStyle);
+      map.once('style.load', () => {
+        add3DBuildingsLayer(map);
+      });
+    } catch (e) {
+      console.warn('Error setting map style:', e);
+    }
+  }, [mapStyle, isMapReady]);
+
+  // Center camera when cluster changes
   useEffect(() => {
-    const map = mapInstanceRef.current;
-    if (!map) return;
+    const map = mapRef.current;
+    if (!map || !isMapReady) return;
 
     if (selectedCluster === 'delhi') {
-      map.flyTo([28.5672, 77.2100], 12, { duration: 1.2 });
+      map.flyTo({ center: [77.2100, 28.5672], zoom: 14.2, pitch: 60, bearing: -18, duration: 1800 });
     } else if (selectedCluster === 'bengaluru') {
-      map.flyTo([12.9634, 77.5753], 12, { duration: 1.2 });
+      map.flyTo({ center: [77.5753, 12.9634], zoom: 14.5, pitch: 60, bearing: 20, duration: 1800 });
     } else if (selectedCluster === 'mumbai') {
-      map.flyTo([19.0150, 72.8400], 12, { duration: 1.2 });
+      map.flyTo({ center: [72.8427, 19.0024], zoom: 14.5, pitch: 62, bearing: -35, duration: 1800 });
     }
-  }, [selectedCluster]);
+  }, [selectedCluster, isMapReady]);
 
-  // Render Markers and Shockwaves on Real Map
+  // Continuous 3D Drone Cinematic Orbit
   useEffect(() => {
-    const map = mapInstanceRef.current;
-    const markersLayer = markersLayerRef.current;
-    const routesLayer = routesLayerRef.current;
-    if (!map || !markersLayer || !routesLayer) return;
+    const map = mapRef.current;
+    if (!map || !isMapReady || !isAutoOrbit) return;
 
-    markersLayer.clearLayers();
-    routesLayer.clearLayers();
+    let animId: number;
+    const rotateCamera = () => {
+      if (!isAutoOrbit) return;
+      map.setBearing((map.getBearing() + 0.15) % 360);
+      animId = requestAnimationFrame(rotateCamera);
+    };
 
-    // 1. Render Facility Markers with Shockwave Beacons
+    animId = requestAnimationFrame(rotateCamera);
+    return () => cancelAnimationFrame(animId);
+  }, [isAutoOrbit, isMapReady]);
+
+  // Render 3D Markers & Corridors safely when map is ready
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !isMapReady) return;
+
+    // Clear existing markers
+    markersRef.current.forEach((m) => m.remove());
+    markersRef.current = [];
+
+    // Add 3D Facility Markers
     activeFacilities.forEach((facility) => {
       const { status, deficits } = getNodeStatus(facility);
 
@@ -370,97 +536,117 @@ export default function Real3DEventMap({
         return;
       }
 
-      // Build custom HTML Marker
-      let badgeColor = 'bg-teal-600 border-teal-300 text-white';
-      let haloColor = 'border-teal-500 bg-teal-500/20';
+      const el = document.createElement('div');
+      el.className = 'relative flex items-center justify-center cursor-pointer group select-none';
+
+      let badgeBg = 'bg-teal-600 border-teal-300 text-white';
       let shockwaveHtml = '';
 
       if (status === 'deficit') {
-        badgeColor = 'bg-rose-600 border-rose-300 text-white shadow-rose-950/80';
-        haloColor = 'border-rose-500 bg-rose-500/30';
-        // Pulsing Shockwave for Deficit Event Detection
+        badgeBg = 'bg-rose-600 border-rose-300 text-white shadow-rose-950/80';
         shockwaveHtml = `
-          <div class="absolute -inset-6 rounded-full border border-rose-500/80 animate-ping pointer-events-none"></div>
-          <div class="absolute -inset-3 rounded-full bg-rose-500/30 animate-pulse pointer-events-none"></div>
+          <div class="absolute -inset-8 rounded-full border-2 border-rose-500/90 animate-ping pointer-events-none"></div>
+          <div class="absolute -inset-4 rounded-full bg-rose-500/35 animate-pulse pointer-events-none"></div>
         `;
       } else if (status === 'surplus') {
-        badgeColor = 'bg-emerald-600 border-emerald-300 text-white shadow-emerald-950/80';
-        haloColor = 'border-emerald-500 bg-emerald-500/20';
-        shockwaveHtml = `<div class="absolute -inset-3 rounded-full bg-emerald-500/25 animate-pulse pointer-events-none"></div>`;
+        badgeBg = 'bg-emerald-600 border-emerald-300 text-white shadow-emerald-950/80';
+        shockwaveHtml = `<div class="absolute -inset-4 rounded-full bg-emerald-500/30 animate-pulse pointer-events-none"></div>`;
       } else if (status === 'user-post') {
-        badgeColor = 'bg-amber-500 border-amber-200 text-slate-950 font-black shadow-amber-950/80';
+        badgeBg = 'bg-amber-500 border-amber-200 text-slate-950 font-black shadow-amber-950/80';
         shockwaveHtml = `
-          <div class="absolute -inset-8 rounded-full border-2 border-amber-400/90 animate-ping pointer-events-none"></div>
-          <div class="absolute -inset-4 rounded-full bg-amber-400/30 animate-pulse pointer-events-none"></div>
+          <div class="absolute -inset-10 rounded-full border-2 border-amber-400/90 animate-ping pointer-events-none"></div>
+          <div class="absolute -inset-5 rounded-full bg-amber-400/40 animate-pulse pointer-events-none"></div>
         `;
       }
 
       const isSelected = selectedNode?.id === facility.id;
 
-      const markerHtml = `
-        <div class="relative flex items-center justify-center cursor-pointer group select-none">
+      el.innerHTML = `
+        <div class="relative flex items-center justify-center">
           ${shockwaveHtml}
-          <div class="relative w-8 h-8 rounded-xl flex items-center justify-center font-bold text-[11px] shadow-xl border-2 transition-transform duration-200 ${badgeColor} ${
+          <div class="relative w-8 h-8 rounded-xl flex items-center justify-center font-bold text-[11px] shadow-2xl border-2 transition-transform duration-200 ${badgeBg} ${
         isSelected ? 'scale-125 ring-2 ring-white z-50' : 'group-hover:scale-110'
       }">
             ${facility.shortCode.split('-')[0]}
           </div>
-          <div class="absolute top-9 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded bg-slate-950/90 text-white text-[10px] font-bold tracking-tight border border-slate-700 whitespace-nowrap shadow-md pointer-events-none">
+          <div class="absolute top-9 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded bg-slate-950/95 text-white text-[10px] font-bold tracking-tight border border-slate-700 whitespace-nowrap shadow-md pointer-events-none">
             ${facility.name.split(' ')[0]} ${deficits.length > 0 ? `<span class="text-rose-400">(${deficits.length} def)</span>` : ''}
           </div>
         </div>
       `;
 
-      const customIcon = L.divIcon({
-        html: markerHtml,
-        className: 'custom-leaflet-marker',
-        iconSize: [32, 32],
-        iconAnchor: [16, 16],
+      el.addEventListener('click', () => {
+        setSelectedNode(facility);
+        if (mapRef.current) {
+          mapRef.current.flyTo({
+            center: [facility.lng, facility.lat],
+            zoom: 15.5,
+            pitch: 65,
+            duration: 1200,
+          });
+        }
       });
 
-      const marker = L.marker([facility.lat, facility.lng], { icon: customIcon });
-      marker.on('click', () => {
-        setSelectedNode(facility);
-      });
-      marker.addTo(markersLayer);
+      try {
+        const marker = new mapboxgl.Marker({ element: el })
+          .setLngLat([facility.lng, facility.lat])
+          .addTo(map);
+        markersRef.current.push(marker);
+      } catch (err) {
+        console.warn('Marker addition error:', err);
+      }
     });
 
-    // 2. Render Transfer Corridors (Curved Transit Lines between Nodes)
-    if (filterLayer === 'all' || filterLayer === 'routes') {
+    // Safely add Transfer Corridor GeoJSON line
+    try {
+      if (!map.isStyleLoaded()) return;
+
       const donor = activeFacilities.find((f) => getNodeStatus(f).status === 'surplus') || activeFacilities[4];
       const deficit = activeFacilities.find((f) => getNodeStatus(f).status === 'deficit') || activeFacilities[1];
 
-      if (donor && deficit && donor.id !== deficit.id) {
-        const latlngs: [number, number][] = [
-          [donor.lat, donor.lng],
-          [deficit.lat, deficit.lng],
-        ];
+      const lineSourceId = 'transit-corridor-source';
+      const lineLayerId = 'transit-corridor-line';
 
-        // Polyline connecting donor to recipient
-        const polyline = L.polyline(latlngs, {
-          color: '#14B8A6',
-          weight: 3.5,
-          opacity: 0.85,
-          dashArray: '8, 8',
+      if (map.getLayer(lineLayerId)) map.removeLayer(lineLayerId);
+      if (map.getSource(lineSourceId)) map.removeSource(lineSourceId);
+
+      if (donor && deficit && donor.id !== deficit.id && (filterLayer === 'all' || filterLayer === 'routes')) {
+        map.addSource(lineSourceId, {
+          type: 'geojson',
+          data: {
+            type: 'Feature',
+            properties: {},
+            geometry: {
+              type: 'LineString',
+              coordinates: [
+                [donor.lng, donor.lat],
+                [(donor.lng + deficit.lng) / 2 + 0.005, (donor.lat + deficit.lat) / 2 + 0.005],
+                [deficit.lng, deficit.lat],
+              ],
+            },
+          },
         });
-        polyline.addTo(routesLayer);
 
-        // Marker for moving photon payload along corridor
-        const midpoint: [number, number] = [
-          (donor.lat + deficit.lat) / 2,
-          (donor.lng + deficit.lng) / 2,
-        ];
-
-        const transitPulseIcon = L.divIcon({
-          html: `<div class="w-3.5 h-3.5 rounded-full bg-white border-2 border-teal-400 shadow-lg shadow-teal-400/80 animate-ping"></div>`,
-          className: 'transit-pulse-icon',
-          iconSize: [14, 14],
-          iconAnchor: [7, 7],
+        map.addLayer({
+          id: lineLayerId,
+          type: 'line',
+          source: lineSourceId,
+          layout: {
+            'line-join': 'round',
+            'line-cap': 'round',
+          },
+          paint: {
+            'line-color': '#14B8A6',
+            'line-width': 4,
+            'line-opacity': 0.85,
+            'line-dasharray': [3, 2],
+          },
         });
-        L.marker(midpoint, { icon: transitPulseIcon }).addTo(routesLayer);
       }
+    } catch (e) {
+      console.warn('Corridor line drawing note:', e);
     }
-  }, [activeFacilities, filterLayer, selectedNode]);
+  }, [activeFacilities, filterLayer, selectedNode, isMapReady]);
 
   // Distance computation between measured nodes
   const distanceStats = useMemo(() => {
@@ -471,10 +657,45 @@ export default function Real3DEventMap({
       measureToNode.lat,
       measureToNode.lng
     );
-    const roadKm = parseFloat((geodesicKm * 1.28).toFixed(1)); // 1.28 urban road routing factor
-    const ambulanceEtaMins = Math.max(Math.round((roadKm / 55) * 60), 2); // 55 km/h emergency response speed
+    const roadKm = parseFloat((geodesicKm * 1.28).toFixed(1));
+    const ambulanceEtaMins = Math.max(Math.round((roadKm / 55) * 60), 2);
     return { geodesicKm, roadKm, ambulanceEtaMins };
   }, [measureFromNode, measureToNode]);
+
+  // Camera presets
+  const handleCameraPreset = (preset: '3d-tilt' | 'birds-eye' | 'top-down') => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (preset === '3d-tilt') {
+      map.easeTo({ pitch: 65, bearing: -25, zoom: 15.2, duration: 1000 });
+    } else if (preset === 'birds-eye') {
+      map.easeTo({ pitch: 45, bearing: 0, zoom: 14.5, duration: 1000 });
+    } else if (preset === 'top-down') {
+      map.easeTo({ pitch: 0, bearing: 0, duration: 1000 });
+    }
+  };
+
+  if (mapInitError) {
+    return (
+      <div className="rounded-2xl border border-rose-900/60 bg-gradient-to-b from-[#180A0A] to-[#0A0606] p-8 text-center space-y-4">
+        <div className="w-12 h-12 rounded-2xl bg-rose-950 border border-rose-700 text-rose-400 flex items-center justify-center mx-auto shadow-lg">
+          <AlertTriangle className="w-6 h-6" />
+        </div>
+        <h3 className="text-lg font-bold text-white font-heading">3D Map Initialization Notice</h3>
+        <p className="text-xs text-slate-300 max-w-md mx-auto leading-relaxed">
+          {mapInitError}. Please verify that your device has WebGL hardware acceleration enabled.
+        </p>
+        <button
+          onClick={() => window.location.reload()}
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs shadow-lg cursor-pointer"
+        >
+          <RefreshCw className="w-3.5 h-3.5" />
+          <span>Reload 3D Geospatial Map</span>
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -488,25 +709,25 @@ export default function Real3DEventMap({
           <div className="flex items-center gap-2.5">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
             <h2 className="text-base sm:text-lg font-bold text-white font-heading tracking-tight">
-              Real-Time Geospatial Operations Map
+              Real 3D Geospatial Operations Map
             </h2>
             <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-wider bg-teal-950 text-teal-300 border border-teal-700/60 font-mono">
-              LIVE GIS FEED
+              3D EXTRUDED GIS
             </span>
           </div>
           <p className="text-xs text-slate-300 mt-0.5">
-            Real geographic coordinates, live browser GPS location sync, and regional emergency transit corridors.
+            Photorealistic 3D city buildings, real GPS detection, 360° pitch orbit, and active emergency transit corridors.
           </p>
         </div>
 
-        {/* Cluster & Location Actions */}
+        {/* Controls & Actions */}
         <div className="flex flex-wrap items-center gap-2.5 text-xs">
           {/* Detect User Real Location */}
           <button
             onClick={handleDetectLocation}
             disabled={isLocating}
             className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-md shadow-amber-950/40 transition-all cursor-pointer active:scale-95 disabled:opacity-60"
-            title="Detect your device GPS real location and place your Command Post on the map"
+            title="Detect device GPS real location and fly 3D camera to your location"
           >
             <Locate className={`w-3.5 h-3.5 ${isLocating ? 'animate-spin' : ''}`} />
             <span>{isLocating ? 'Detecting GPS...' : 'Detect My Real Location'}</span>
@@ -546,27 +767,54 @@ export default function Real3DEventMap({
             </button>
           </div>
 
-          {/* 3D Drone Perspective vs 2D Plan View Toggle */}
+          {/* 3D Camera Angles */}
+          <div className="flex items-center bg-[#071E1B] border border-teal-800/80 rounded-xl p-0.5 text-xs">
+            <button
+              onClick={() => handleCameraPreset('3d-tilt')}
+              className="px-2.5 py-1 rounded-lg text-slate-300 hover:text-white hover:bg-teal-900 transition-colors cursor-pointer font-medium"
+              title="65° 3D Isometric View"
+            >
+              3D Tilt
+            </button>
+            <button
+              onClick={() => handleCameraPreset('birds-eye')}
+              className="px-2.5 py-1 rounded-lg text-slate-300 hover:text-white hover:bg-teal-900 transition-colors cursor-pointer font-medium"
+              title="45° Bird's Eye View"
+            >
+              Bird's Eye
+            </button>
+            <button
+              onClick={() => handleCameraPreset('top-down')}
+              className="px-2.5 py-1 rounded-lg text-slate-300 hover:text-white hover:bg-teal-900 transition-colors cursor-pointer font-medium"
+              title="2D Top-Down View"
+            >
+              Top-Down
+            </button>
+          </div>
+
+          {/* 3D Drone Cinematic Orbit Toggle */}
           <button
-            onClick={() => setIs3DMode(!is3DMode)}
-            className={`px-3 py-1.5 rounded-xl font-bold border transition-all cursor-pointer ${
-              is3DMode
-                ? 'bg-emerald-600/30 text-emerald-300 border-emerald-500/60'
+            onClick={() => setIsAutoOrbit(!isAutoOrbit)}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold border transition-all cursor-pointer ${
+              isAutoOrbit
+                ? 'bg-emerald-600/30 text-emerald-300 border-emerald-500/60 shadow-sm'
                 : 'bg-[#071E1B] text-slate-300 border-teal-800 hover:text-white'
             }`}
+            title="Continuous 360° drone camera rotation"
           >
-            <span>{is3DMode ? '3D Drone View: ON' : '2D Plan View'}</span>
+            <RotateCw className={`w-3.5 h-3.5 ${isAutoOrbit ? 'animate-spin' : ''}`} />
+            <span>{isAutoOrbit ? 'Orbiting' : '360° Orbit'}</span>
           </button>
 
-          {/* Basemap Tile Switcher */}
+          {/* Map Style Selector */}
           <select
-            value={tileLayerType}
-            onChange={(e) => setTileLayerType(e.target.value as any)}
+            value={mapStyle}
+            onChange={(e) => setMapStyle(e.target.value as any)}
             className="bg-[#071E1B] text-slate-200 border border-teal-800/80 rounded-xl px-2.5 py-1 text-xs font-semibold cursor-pointer outline-none"
           >
-            <option value="carto-dark">Carto Dark (ICCC)</option>
-            <option value="esri-satellite">Satellite Imagery</option>
-            <option value="osm">OpenStreetMap</option>
+            <option value="dark">Clinical Dark 3D</option>
+            <option value="satellite">Satellite Earth 3D</option>
+            <option value="streets">Daylight Streets 3D</option>
           </select>
 
           {/* Fullscreen Toggle */}
@@ -601,19 +849,13 @@ export default function Real3DEventMap({
       )}
 
       {/* Main Map View Area */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 min-h-[480px]">
-        {/* Left 3 Columns: Leaflet Real Map with optional 3D Perspective Tilt */}
-        <div className="lg:col-span-3 relative h-[440px] sm:h-[500px] overflow-hidden bg-[#051312]">
-          <div
-            className={`w-full h-full transition-transform duration-500 ease-out origin-bottom ${
-              is3DMode ? 'scale-[1.08] perspective-[1100px] [transform:rotateX(34deg)_rotateZ(-2deg)] shadow-2xl' : ''
-            }`}
-          >
-            <div ref={mapContainerRef} className="w-full h-full" />
-          </div>
+      <div className="grid grid-cols-1 lg:grid-cols-4 min-h-[500px]">
+        {/* Left 3 Columns: Mapbox GL WebGL 3D Canvas */}
+        <div className="lg:col-span-3 relative h-[460px] sm:h-[540px] bg-[#051312] overflow-hidden">
+          <div ref={mapContainerRef} className="w-full h-full" />
 
-          {/* Floating Map Overlay: Filter & Live Telemetry Controls */}
-          <div className="absolute top-4 left-4 z-[400] flex flex-wrap items-center gap-1.5 bg-[#061514]/90 border border-teal-800/80 p-1 rounded-xl shadow-lg backdrop-blur-md text-xs">
+          {/* Floating Map Filter Tabs */}
+          <div className="absolute top-4 left-4 z-10 flex flex-wrap items-center gap-1.5 bg-[#061514]/90 border border-teal-800/80 p-1 rounded-xl shadow-lg backdrop-blur-md text-xs">
             <button
               onClick={() => setFilterLayer('all')}
               className={`px-3 py-1 rounded-lg font-bold transition-all cursor-pointer ${
@@ -646,25 +888,28 @@ export default function Real3DEventMap({
             </button>
           </div>
 
-          {/* Floating Map Legend */}
-          <div className="absolute bottom-4 left-4 z-[400] p-3 rounded-xl bg-[#061514]/90 border border-teal-900/80 text-[11px] text-slate-300 space-y-1.5 shadow-lg backdrop-blur-md">
+          {/* Floating Map Legend & 3D Building Hint */}
+          <div className="absolute bottom-4 left-4 z-10 p-3 rounded-xl bg-[#061514]/90 border border-teal-900/80 text-[11px] text-slate-300 space-y-1.5 shadow-lg backdrop-blur-md">
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse" />
               <span>Critical Deficit (Expanding Shockwave)</span>
             </div>
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-              <span>Surplus Donor Facility</span>
+              <span>Surplus Donor Hub</span>
             </div>
             {userLocation && (
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
-                <span className="text-amber-300 font-bold">My Real Location (GPS Beacon)</span>
+                <span className="text-amber-300 font-bold">My Real Location (GPS)</span>
               </div>
             )}
             <div className="flex items-center gap-2">
               <span className="w-4 h-0.5 bg-teal-400" />
-              <span>Active Resource Transit Arc</span>
+              <span>Active Supply Route Arc</span>
+            </div>
+            <div className="pt-1 border-t border-teal-900/60 text-[10px] text-teal-300/80 font-mono">
+              Tip: Right-click & drag to rotate 3D angle 360°
             </div>
           </div>
         </div>
